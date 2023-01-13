@@ -42,6 +42,7 @@ require (
 	github.com/imdario/mergo v0.3.13 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
+	github.com/k8snetworkplumbingwg/network-attachment-definition-client v1.4.0 // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect
 	github.com/matttproud/golang_protobuf_extensions v1.0.2 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
@@ -84,3 +85,5 @@ replace github.com/openstack-k8s-operators/cinder-operator/api => ./api
 // Without this, the following error occurs:
 // ../go/pkg/mod/k8s.io/apimachinery@v0.24.3/pkg/util/managedfields/gvkparser.go:62:39: cannot use smdschema.Schema{…} (value of type "sigs.k8s.io/structured-merge-diff/v4/schema".Schema) as type *"sigs.k8s.io/structured-merge-diff/v4/schema".Schema in struct literal
 replace sigs.k8s.io/structured-merge-diff/v4 v4.2.2 => sigs.k8s.io/structured-merge-diff/v4 v4.2.1
+
+replace github.com/openstack-k8s-operators/lib-common/modules/common => github.com/stuggi/lib-common/modules/common v0.0.0-20230213111010-7458e283a386
