@@ -15,7 +15,20 @@ spec:
     singular: cinderapi
   scope: Namespaced
   versions:
-  - name: v1beta1
+  - additionalPrinterColumns:
+    - description: Networks
+      jsonPath: .status.networks
+      name: Networks
+      type: string
+    - description: Status
+      jsonPath: .status.conditions[0].status
+      name: Status
+      type: string
+    - description: Message
+      jsonPath: .status.conditions[0].message
+      name: Message
+      type: string
+    name: v1beta1
     schema:
       openAPIV3Schema:
         description: CinderAPI is the Schema for the cinderapis API
@@ -1882,6 +1895,12 @@ spec:
                   - extraVol
                   type: object
                 type: array
+              networkAttachmentDefinitions:
+                description: NetworkAttachmentDefinitions list of network attachment
+                  definitions the service pod gets attached to
+                items:
+                  type: string
+                type: array
               nodeSelector:
                 additionalProperties:
                   type: string
@@ -2010,6 +2029,12 @@ spec:
                   type: string
                 description: Map of hashes to track e.g. job status
                 type: object
+              networks:
+                description: Networks in addtion to the cluster network, the service
+                  is attached to
+                items:
+                  type: string
+                type: array
               readyCount:
                 description: ReadyCount of Cinder API instances
                 format: int32

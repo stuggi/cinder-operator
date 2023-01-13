@@ -291,7 +291,11 @@ func (r *CinderReconciler) reconcileInit(
 	// run Cinder db sync
 	//
 	dbSyncHash := instance.Status.Hash[cinderv1beta1.DbSyncHash]
-	jobDef := cinder.DbSyncJob(instance, serviceLabels)
+	jobDef, err := cinder.DbSyncJob(instance, serviceLabels)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
 	dbSyncjob := job.NewJob(
 		jobDef,
 		cinderv1beta1.DbSyncHash,
@@ -598,6 +602,7 @@ func (r *CinderReconciler) reconcileNormal(ctx context.Context, instance *cinder
 		// as the message for the other Cinder children when they are successfully-deployed
 		instance.Status.Conditions.MarkTrue(cinderv1beta1.CinderVolumeReadyCondition, condition.DeploymentReadyMessage)
 	}
+	instance.Status.Networks = instance.Spec.NetworkAttachmentDefinitions
 
 	r.Log.Info(fmt.Sprintf("Reconciled Service '%s' successfully", instance.Name))
 	return ctrl.Result{}, nil
@@ -753,6 +758,7 @@ func (r *CinderReconciler) apiDeploymentCreateOrUpdate(instance *cinderv1beta1.C
 		deployment.Spec.Secret = instance.Spec.Secret
 		deployment.Spec.TransportURLSecret = instance.Status.TransportURLSecret
 		deployment.Spec.ExtraMounts = instance.Spec.ExtraMounts
+		deployment.Spec.NetworkAttachmentDefinitions = instance.Spec.NetworkAttachmentDefinitions
 		if len(deployment.Spec.NodeSelector) == 0 {
 			deployment.Spec.NodeSelector = instance.Spec.NodeSelector
 		}
@@ -786,6 +792,7 @@ func (r *CinderReconciler) schedulerDeploymentCreateOrUpdate(instance *cinderv1b
 		deployment.Spec.Secret = instance.Spec.Secret
 		deployment.Spec.TransportURLSecret = instance.Status.TransportURLSecret
 		deployment.Spec.ExtraMounts = instance.Spec.ExtraMounts
+		deployment.Spec.NetworkAttachmentDefinitions = instance.Spec.NetworkAttachmentDefinitions
 		if len(deployment.Spec.NodeSelector) == 0 {
 			deployment.Spec.NodeSelector = instance.Spec.NodeSelector
 		}
@@ -819,6 +826,7 @@ func (r *CinderReconciler) backupDeploymentCreateOrUpdate(instance *cinderv1beta
 		deployment.Spec.Secret = instance.Spec.Secret
 		deployment.Spec.TransportURLSecret = instance.Status.TransportURLSecret
 		deployment.Spec.ExtraMounts = instance.Spec.ExtraMounts
+		deployment.Spec.NetworkAttachmentDefinitions = instance.Spec.NetworkAttachmentDefinitions
 		if len(deployment.Spec.NodeSelector) == 0 {
 			deployment.Spec.NodeSelector = instance.Spec.NodeSelector
 		}
@@ -852,6 +860,7 @@ func (r *CinderReconciler) volumeDeploymentCreateOrUpdate(instance *cinderv1beta
 		deployment.Spec.Secret = instance.Spec.Secret
 		deployment.Spec.TransportURLSecret = instance.Status.TransportURLSecret
 		deployment.Spec.ExtraMounts = instance.Spec.ExtraMounts
+		deployment.Spec.NetworkAttachmentDefinitions = instance.Spec.NetworkAttachmentDefinitions
 		if len(deployment.Spec.NodeSelector) == 0 {
 			deployment.Spec.NodeSelector = instance.Spec.NodeSelector
 		}

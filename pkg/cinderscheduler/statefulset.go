@@ -16,11 +16,15 @@ limitations under the License.
 package cinderscheduler
 
 import (
+	"fmt"
+
 	cinderv1beta1 "github.com/openstack-k8s-operators/cinder-operator/api/v1beta1"
 	cinder "github.com/openstack-k8s-operators/cinder-operator/pkg/cinder"
 	common "github.com/openstack-k8s-operators/lib-common/modules/common"
 	"github.com/openstack-k8s-operators/lib-common/modules/common/affinity"
+	"github.com/openstack-k8s-operators/lib-common/modules/common/annotations"
 	"github.com/openstack-k8s-operators/lib-common/modules/common/env"
+	"github.com/openstack-k8s-operators/lib-common/modules/common/util"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -38,7 +42,7 @@ func StatefulSet(
 	instance *cinderv1beta1.CinderScheduler,
 	configHash string,
 	labels map[string]string,
-) *appsv1.StatefulSet {
+) (*appsv1.StatefulSet, error) {
 	rootUser := int64(0)
 	// Cinder's uid and gid magic numbers come from the 'cinder-user' in
 	// https://github.com/openstack/kolla/blob/master/kolla/common/users.py
@@ -162,6 +166,14 @@ func StatefulSet(
 		statefulset.Spec.Template.Spec.NodeSelector = instance.Spec.NodeSelector
 	}
 
+	// networks to attach to
+	nwAnnotation, err := annotations.GetNADAnnotation(instance.Namespace, instance.Spec.NetworkAttachmentDefinitions)
+	if err != nil {
+		return nil, fmt.Errorf("failed create network annotation from %s: %w",
+			instance.Spec.NetworkAttachmentDefinitions, err)
+	}
+	statefulset.Spec.Template.Annotations = util.MergeStringMaps(statefulset.Spec.Template.Annotations, nwAnnotation)
+
 	initContainerDetails := cinder.APIDetails{
 		ContainerImage:       instance.Spec.ContainerImage,
 		DatabaseHost:         instance.Spec.DatabaseHostname,
@@ -183,5 +195,5 @@ func StatefulSet(
 	envVars["CustomConf"] = env.SetValue(common.CustomServiceConfigFileName)
 	statefulset.Spec.Template.Spec.InitContainers[0].Env = env.MergeEnvs(statefulset.Spec.Template.Spec.InitContainers[0].Env, envVars)
 
-	return statefulset
+	return statefulset, nil
 }

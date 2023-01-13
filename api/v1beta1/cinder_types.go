@@ -125,6 +125,11 @@ type CinderSpec struct {
 	// NodeSelector here acts as a default value and can be overridden by service
 	// specific NodeSelector Settings.
 	NodeSelector map[string]string `json:"nodeSelector,omitempty"`
+
+	// +kubebuilder:validation:Optional
+	// NetworkAttachmentDefinitions list of network attachment definitions the service pods get attached to.
+	// Define them on the instance level will have no affect to overwrite the global ones.
+	NetworkAttachmentDefinitions []string `json:"networkAttachmentDefinitions"`
 }
 
 // CinderStatus defines the observed state of Cinder
@@ -158,10 +163,14 @@ type CinderStatus struct {
 
 	// ReadyCounts of Cinder Volume instances
 	CinderVolumesReadyCounts map[string]int32 `json:"cinderVolumesReadyCounts,omitempty"`
+
+	// Networks in addtion to the cluster network, the service is attached to
+	Networks []string `json:"networks,omitempty"`
 }
 
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
+//+kubebuilder:printcolumn:name="Networks",type="string",JSONPath=".status.networks",description="Networks"
 //+kubebuilder:printcolumn:name="Status",type="string",JSONPath=".status.conditions[0].status",description="Status"
 //+kubebuilder:printcolumn:name="Message",type="string",JSONPath=".status.conditions[0].message",description="Message"
 

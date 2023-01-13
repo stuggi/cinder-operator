@@ -16,6 +16,10 @@ spec:
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
+    - description: Networks
+      jsonPath: .status.networks
+      name: Networks
+      type: string
     - description: Status
       jsonPath: .status.conditions[0].status
       name: Status
@@ -2001,6 +2005,12 @@ spec:
                       required:
                       - extraVol
                       type: object
+                    type: array
+                  networkAttachmentDefinitions:
+                    description: NetworkAttachmentDefinitions list of network attachment
+                      definitions the service pod gets attached to
+                    items:
+                      type: string
                     type: array
                   nodeSelector:
                     additionalProperties:
@@ -4031,6 +4041,12 @@ spec:
                       - extraVol
                       type: object
                     type: array
+                  networkAttachmentDefinitions:
+                    description: NetworkAttachmentDefinitions list of network attachment
+                      definitions the service pod gets attached to
+                    items:
+                      type: string
+                    type: array
                   nodeSelector:
                     additionalProperties:
                       type: string
@@ -6058,6 +6074,12 @@ spec:
                       required:
                       - extraVol
                       type: object
+                    type: array
+                  networkAttachmentDefinitions:
+                    description: NetworkAttachmentDefinitions list of network attachment
+                      definitions the service pod gets attached to
+                    items:
+                      type: string
                     type: array
                   nodeSelector:
                     additionalProperties:
@@ -8137,6 +8159,12 @@ spec:
                         - extraVol
                         type: object
                       type: array
+                    networkAttachmentDefinitions:
+                      description: NetworkAttachmentDefinitions list of network attachment
+                        definitions the service pod gets attached to
+                      items:
+                        type: string
+                      type: array
                     nodeSelector:
                       additionalProperties:
                         type: string
@@ -10058,6 +10086,13 @@ spec:
                   - extraVol
                   type: object
                 type: array
+              networkAttachmentDefinitions:
+                description: NetworkAttachmentDefinitions list of network attachment
+                  definitions the service pods get attached to. Define them on the
+                  instance level will have no affect to overwrite the global ones.
+                items:
+                  type: string
+                type: array
               nodeSelector:
                 additionalProperties:
                   type: string
@@ -10186,6 +10221,12 @@ spec:
                   type: string
                 description: Map of hashes to track e.g. job status
                 type: object
+              networks:
+                description: Networks in addtion to the cluster network, the service
+                  is attached to
+                items:
+                  type: string
+                type: array
               serviceIDs:
                 additionalProperties:
                   type: string

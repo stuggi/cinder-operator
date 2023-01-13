@@ -396,8 +396,12 @@ func (r *CinderSchedulerReconciler) reconcileNormal(ctx context.Context, instanc
 	//
 
 	// Deploy a statefulset
+	ssDef, err := cinderscheduler.StatefulSet(instance, inputHash, serviceLabels)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
 	ss := statefulset.NewStatefulSet(
-		cinderscheduler.StatefulSet(instance, inputHash, serviceLabels),
+		ssDef,
 		5,
 	)
 
@@ -419,6 +423,8 @@ func (r *CinderSchedulerReconciler) reconcileNormal(ctx context.Context, instanc
 		return ctrlResult, nil
 	}
 	instance.Status.ReadyCount = ss.GetStatefulSet().Status.ReadyReplicas
+	instance.Status.Networks = instance.Spec.NetworkAttachmentDefinitions
+
 	if instance.Status.ReadyCount > 0 {
 		instance.Status.Conditions.MarkTrue(condition.DeploymentReadyCondition, condition.DeploymentReadyMessage)
 	}

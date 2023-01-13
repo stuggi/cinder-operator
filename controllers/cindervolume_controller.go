@@ -397,8 +397,12 @@ func (r *CinderVolumeReconciler) reconcileNormal(ctx context.Context, instance *
 	//
 
 	// Deploy a statefulset
+	ssDef, err := cindervolume.StatefulSet(instance, inputHash, serviceLabels)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
 	ss := statefulset.NewStatefulSet(
-		cindervolume.StatefulSet(instance, inputHash, serviceLabels),
+		ssDef,
 		5,
 	)
 
@@ -420,6 +424,8 @@ func (r *CinderVolumeReconciler) reconcileNormal(ctx context.Context, instance *
 		return ctrlResult, nil
 	}
 	instance.Status.ReadyCount = ss.GetStatefulSet().Status.ReadyReplicas
+	instance.Status.Networks = instance.Spec.NetworkAttachmentDefinitions
+
 	if instance.Status.ReadyCount > 0 {
 		instance.Status.Conditions.MarkTrue(condition.DeploymentReadyCondition, condition.DeploymentReadyMessage)
 	}

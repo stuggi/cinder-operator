@@ -643,8 +643,12 @@ func (r *CinderAPIReconciler) reconcileNormal(ctx context.Context, instance *cin
 	//
 
 	// Define a new Deployment object
+	deplDef, err := cinderapi.Deployment(instance, inputHash, serviceLabels)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
 	depl := deployment.NewDeployment(
-		cinderapi.Deployment(instance, inputHash, serviceLabels),
+		deplDef,
 		5,
 	)
 
@@ -666,6 +670,8 @@ func (r *CinderAPIReconciler) reconcileNormal(ctx context.Context, instance *cin
 		return ctrlResult, nil
 	}
 	instance.Status.ReadyCount = depl.GetDeployment().Status.ReadyReplicas
+	instance.Status.Networks = instance.Spec.NetworkAttachmentDefinitions
+
 	if instance.Status.ReadyCount > 0 {
 		instance.Status.Conditions.MarkTrue(condition.DeploymentReadyCondition, condition.DeploymentReadyMessage)
 	}
