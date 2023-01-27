@@ -92,6 +92,41 @@ spec:
                   files. Those get added to the service config dir in /etc/<service>
                   . TODO: -> implement'
                 type: object
+              externalEndpoints:
+                description: ExternalEndpoints, expose a VIP via MetalLB on the pre-created
+                  address pool
+                items:
+                  description: MetalLBConfig to configure the MetalLB loadbalancer
+                    service
+                  properties:
+                    endpoint:
+                      description: Endpoint, OpenStack endpoint this service maps
+                        to
+                      enum:
+                      - admin
+                      - internal
+                      - public
+                      type: string
+                    ipAddressPool:
+                      description: IPAddressPool expose VIP via MetalLB on the IPAddressPool
+                      minLength: 1
+                      type: string
+                    loadBalancerIPs:
+                      description: LoadBalancerIPs, request given IPs from the pool
+                        if available. Using a list to allow dual stack (IPv4/IPv6)
+                        support
+                      items:
+                        type: string
+                      type: array
+                    sharedIP:
+                      default: true
+                      description: SharedIP if true, VIP/VIPs get shared with multiple
+                        services
+                      type: boolean
+                  required:
+                  - ipAddressPool
+                  type: object
+                type: array
               extraMounts:
                 description: ExtraMounts containing conf files and credentials
                 items:
