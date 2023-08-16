@@ -336,8 +336,10 @@ func (r *CinderAPIReconciler) reconcileInit(
 	apiEndpointsV3 := make(map[string]string)
 
 	for endpointType, data := range cinderEndpoints {
-		endpointName := cinder.ServiceName + "-" + string(endpointType)
-		svcOverride := service.GetOverrideSpecForEndpoint(instance.Spec.Override.Service, endpointType)
+		endpointTypeStr := string(endpointType)
+
+		endpointName := cinder.ServiceName + "-" + endpointTypeStr
+		svcOverride := instance.Spec.Override.Service[endpointTypeStr]
 
 		exportLabels := util.MergeStringMaps(
 			serviceLabels,
@@ -360,7 +362,7 @@ func (r *CinderAPIReconciler) reconcileInit(
 				},
 			}),
 			5,
-			svcOverride,
+			&svcOverride,
 		)
 		if err != nil {
 			instance.Status.Conditions.Set(condition.FalseCondition(
@@ -395,7 +397,7 @@ func (r *CinderAPIReconciler) reconcileInit(
 
 		// TODO: TLS, pass in https as protocol, create TLS cert
 		apiEndpointsV3[string(endpointType)], err = svc.GetAPIEndpoint(
-			svcOverride, data.Protocol, data.Path)
+			&svcOverride, data.Protocol, data.Path)
 		if err != nil {
 			return ctrl.Result{}, err
 		}

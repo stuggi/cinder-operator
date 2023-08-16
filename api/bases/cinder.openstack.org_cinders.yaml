@@ -67,13 +67,8 @@ spec:
                   override:
                     properties:
                       service:
-                        items:
+                        additionalProperties:
                           properties:
-                            endpoint:
-                              enum:
-                              - internal
-                              - public
-                              type: string
                             endpointURL:
                               type: string
                             metadata:
@@ -117,10 +112,8 @@ spec:
                                 type:
                                   type: string
                               type: object
-                          required:
-                          - endpoint
                           type: object
-                        type: array
+                        type: object
                     type: object
                   replicas:
                     default: 1
