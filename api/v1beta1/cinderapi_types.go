@@ -42,7 +42,7 @@ type CinderAPITemplate struct {
 type APIOverrideSpec struct {
 	// Override configuration for the Service created to serve traffic to the cluster.
 	// The key must be the endpoint type (public, internal)
-	Service map[string]service.OverrideSpec `json:"service,omitempty"`
+	Service map[string]service.RoutedOverrideSpec `json:"service,omitempty"`
 }
 
 // CinderAPISpec defines the desired state of CinderAPI
