@@ -18,6 +18,7 @@ package v1beta1
 
 import (
 	"github.com/openstack-k8s-operators/lib-common/modules/common/condition"
+	"github.com/openstack-k8s-operators/lib-common/modules/common/tls"
 	"github.com/openstack-k8s-operators/lib-common/modules/storage"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -118,6 +119,11 @@ type CinderSpec struct {
 	// +kubebuilder:validation:Optional
 	// DBPurge parameters -
 	DBPurge DBPurge `json:"dbPurge,omitempty"`
+
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec
+	// TLS - Parameters related to the TLS
+	TLS tls.APIDBMessaging `json:"tls,omitempty"`
 }
 
 // CinderStatus defines the observed state of Cinder
