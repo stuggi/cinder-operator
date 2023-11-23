@@ -9,12 +9,13 @@ require (
 	github.com/onsi/ginkgo/v2 v2.13.2
 	github.com/onsi/gomega v1.30.0
 	github.com/openstack-k8s-operators/cinder-operator/api v0.1.2-0.20230904185016-c3f3b79f0e7f
-	github.com/openstack-k8s-operators/infra-operator/apis v0.3.1-0.20231122104142-3b449040167e
+	github.com/openstack-k8s-operators/infra-operator/apis v0.3.1-0.20231206173636-5eb2ad7769a7
 	github.com/openstack-k8s-operators/keystone-operator/api v0.3.1-0.20231128185906-0b4579c3dadf
 	github.com/openstack-k8s-operators/lib-common/modules/common v0.3.1-0.20231128145648-956f4d361a63
 	github.com/openstack-k8s-operators/lib-common/modules/storage v0.3.1-0.20231128145648-956f4d361a63
 	github.com/openstack-k8s-operators/lib-common/modules/test v0.3.1-0.20231128145648-956f4d361a63
 	github.com/openstack-k8s-operators/mariadb-operator/api v0.3.0
+	golang.org/x/exp v0.0.0-20231127185646-65229373498e
 	k8s.io/api v0.26.11
 	k8s.io/apimachinery v0.26.11
 	k8s.io/client-go v0.26.11
@@ -60,7 +61,6 @@ require (
 	github.com/spf13/pflag v1.0.5 // indirect
 	go.uber.org/multierr v1.10.0 // indirect
 	go.uber.org/zap v1.26.0 // indirect
-	golang.org/x/exp v0.0.0-20231127185646-65229373498e // indirect
 	golang.org/x/mod v0.14.0 // indirect
 	golang.org/x/net v0.19.0 // indirect
 	golang.org/x/oauth2 v0.7.0 // indirect
@@ -84,6 +84,15 @@ require (
 	sigs.k8s.io/yaml v1.3.0 // indirect
 )
 
+replace ( //allow-merging
+	// pin to k8s 0.26.x for now
+	k8s.io/api => k8s.io/api v0.26.11
+	k8s.io/apimachinery => k8s.io/apimachinery v0.26.11
+	k8s.io/client-go => k8s.io/client-go v0.26.11
+	k8s.io/kube-openapi => k8s.io/kube-openapi v0.0.0-20230327201221-f5883ff37f0c
+	sigs.k8s.io/controller-runtime => sigs.k8s.io/controller-runtime v0.14.7
+)
+
 // Bump golang.org/x/net to avoid Rapid Reset CVE
 replace golang.org/x/net => golang.org/x/net v0.18.0 //allow-merging
 
@@ -96,3 +105,5 @@ replace github.com/openshift/api => github.com/openshift/api v0.0.0-202304141430
 // needed to to cert-manager v1.11.4 see https://github.com/cert-manager/cert-manager/blob/v1.11.4/go.mod#L263C1-L264C104
 // remove this once we bump to cert-manager v1.12.x
 replace github.com/Venafi/vcert/v4 => github.com/jetstack/vcert/v4 v4.9.6-0.20230519122548-219f317ae107 //allow-merging
+
+replace github.com/openstack-k8s-operators/lib-common/modules/common => github.com/deydra71/lib-common/modules/common v0.0.0-20231213134015-7e9e5e1dca40

@@ -51,6 +51,7 @@ import (
 	nad "github.com/openstack-k8s-operators/lib-common/modules/common/networkattachment"
 	common_rbac "github.com/openstack-k8s-operators/lib-common/modules/common/rbac"
 	"github.com/openstack-k8s-operators/lib-common/modules/common/secret"
+	"github.com/openstack-k8s-operators/lib-common/modules/common/service"
 	"github.com/openstack-k8s-operators/lib-common/modules/common/util"
 	mariadbv1 "github.com/openstack-k8s-operators/mariadb-operator/api/v1beta1"
 
@@ -216,6 +217,27 @@ func (r *CinderReconciler) Reconcile(ctx context.Context, req ctrl.Request) (res
 	// Handle non-deleted clusters
 	return r.reconcileNormal(ctx, instance, helper)
 }
+
+// fields to index to reconcile when change
+const (
+	passwordSecretField     = ".spec.secret"
+	caBundleSecretNameField = ".spec.tls.caBundleSecretName"
+	tlsAPIInternalField     = ".spec.tls.api.internal.secretName"
+	tlsAPIPublicField       = ".spec.tls.api.public.secretName"
+)
+
+var (
+	commonWatchFields = []string{
+		passwordSecretField,
+		caBundleSecretNameField,
+	}
+	apinWatchFields = []string{
+		passwordSecretField,
+		caBundleSecretNameField,
+		tlsAPIInternalField,
+		tlsAPIPublicField,
+	}
+)
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *CinderReconciler) SetupWithManager(mgr ctrl.Manager) error {
@@ -923,6 +945,21 @@ func (r *CinderReconciler) generateServiceConfigs(
 		cinder.DatabaseName)
 	templateParameters["MemcachedServersWithInet"] = strings.Join(memcached.Status.ServerListWithInet, ",")
 
+	// create httpd  vhost template parameters
+	httpdVhostConfig := map[string]interface{}{}
+	for _, endpt := range []service.Endpoint{service.EndpointInternal, service.EndpointPublic} {
+		endptConfig := map[string]interface{}{}
+		endptConfig["ServerName"] = fmt.Sprintf("cinder-%s.%s.svc", endpt.String(), instance.Namespace)
+		endptConfig["TLS"] = false // default TLS to false, and set it bellow to true if enabled
+		if instance.Spec.CinderAPI.TLS.API.Enabled(endpt) {
+			endptConfig["TLS"] = true
+			endptConfig["SSLCertificateFile"] = fmt.Sprintf("/etc/pki/tls/certs/%s.crt", endpt.String())
+			endptConfig["SSLCertificateKeyFile"] = fmt.Sprintf("/etc/pki/tls/private/%s.key", endpt.String())
+		}
+		httpdVhostConfig[endpt.String()] = endptConfig
+	}
+	templateParameters["VHosts"] = httpdVhostConfig
+
 	configTemplates := []util.Template{
 		{
 			Name:         fmt.Sprintf("%s-scripts", instance.Name),
@@ -1055,6 +1092,7 @@ func (r *CinderReconciler) schedulerDeploymentCreateOrUpdate(ctx context.Context
 		DatabaseHostname:        instance.Status.DatabaseHostname,
 		TransportURLSecret:      instance.Status.TransportURLSecret,
 		ServiceAccount:          instance.RbacResourceName(),
+		TLS:                     instance.Spec.CinderAPI.TLS.Ca,
 	}
 
 	deployment := &cinderv1beta1.CinderScheduler{
@@ -1090,7 +1128,9 @@ func (r *CinderReconciler) backupDeploymentCreateOrUpdate(ctx context.Context, i
 		DatabaseHostname:     instance.Status.DatabaseHostname,
 		TransportURLSecret:   instance.Status.TransportURLSecret,
 		ServiceAccount:       instance.RbacResourceName(),
+		TLS:                  instance.Spec.CinderAPI.TLS.Ca,
 	}
+
 	deployment := &cinderv1beta1.CinderBackup{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      fmt.Sprintf("%s-backup", instance.Name),
@@ -1151,6 +1191,7 @@ func (r *CinderReconciler) volumeDeploymentCreateOrUpdate(ctx context.Context, i
 		DatabaseHostname:     instance.Status.DatabaseHostname,
 		TransportURLSecret:   instance.Status.TransportURLSecret,
 		ServiceAccount:       instance.RbacResourceName(),
+		TLS:                  instance.Spec.CinderAPI.TLS.Ca,
 	}
 
 	deployment := &cinderv1beta1.CinderVolume{
