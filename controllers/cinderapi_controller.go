@@ -25,7 +25,9 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	k8s_errors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -34,11 +36,13 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
+	certmgrv1 "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
 	"github.com/go-logr/logr"
 	cinderv1beta1 "github.com/openstack-k8s-operators/cinder-operator/api/v1beta1"
 	"github.com/openstack-k8s-operators/cinder-operator/pkg/cinder"
 	cinderapi "github.com/openstack-k8s-operators/cinder-operator/pkg/cinderapi"
 	keystonev1 "github.com/openstack-k8s-operators/keystone-operator/api/v1beta1"
+	"github.com/openstack-k8s-operators/lib-common/modules/certmanager"
 	"github.com/openstack-k8s-operators/lib-common/modules/common"
 	"github.com/openstack-k8s-operators/lib-common/modules/common/condition"
 	"github.com/openstack-k8s-operators/lib-common/modules/common/deployment"
@@ -49,6 +53,7 @@ import (
 	nad "github.com/openstack-k8s-operators/lib-common/modules/common/networkattachment"
 	"github.com/openstack-k8s-operators/lib-common/modules/common/secret"
 	"github.com/openstack-k8s-operators/lib-common/modules/common/service"
+	"github.com/openstack-k8s-operators/lib-common/modules/common/tls"
 	"github.com/openstack-k8s-operators/lib-common/modules/common/util"
 )
 
@@ -101,6 +106,8 @@ var (
 // +kubebuilder:rbac:groups=keystone.openstack.org,resources=keystoneservices,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=keystone.openstack.org,resources=keystoneendpoints,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=k8s.cni.cncf.io,resources=network-attachment-definitions,verbs=get;list;watch
+// +kubebuilder:rbac:groups=cert-manager.io,resources=issuers,verbs=get;list;watch
+// +kubebuilder:rbac:groups=cert-manager.io,resources=certificates,verbs=get;list;watch;create;update;patch;delete;
 
 // Reconcile -
 func (r *CinderAPIReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, _err error) {
@@ -257,6 +264,7 @@ func (r *CinderAPIReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Owns(&keystonev1.KeystoneEndpoint{}).
 		Owns(&appsv1.Deployment{}).
 		Owns(&corev1.Service{}).
+		Owns(&certmgrv1.Certificate{}).
 		// watch the secrets we don't own
 		Watches(&source.Kind{Type: &corev1.Secret{}},
 			handler.EnqueueRequestsFromMapFunc(secretFn)).
@@ -312,8 +320,9 @@ func (r *CinderAPIReconciler) reconcileInit(
 	instance *cinderv1beta1.CinderAPI,
 	helper *helper.Helper,
 	serviceLabels map[string]string,
-) (ctrl.Result, error) {
+) (map[service.Endpoint]tls.Service, ctrl.Result, error) {
 	r.Log.Info(fmt.Sprintf("Reconciling Service '%s' init", instance.Name))
+	tlsEndptCfgMap := make(map[service.Endpoint]tls.Service)
 
 	//
 	// expose the service (create service and return the created endpoint URLs)
@@ -374,7 +383,7 @@ func (r *CinderAPIReconciler) reconcileInit(
 				condition.ExposeServiceReadyErrorMessage,
 				err.Error()))
 
-			return ctrl.Result{}, err
+			return tlsEndptCfgMap, ctrl.Result{}, err
 		}
 
 		svc.AddAnnotation(map[string]string{
@@ -406,22 +415,62 @@ func (r *CinderAPIReconciler) reconcileInit(
 				condition.ExposeServiceReadyErrorMessage,
 				err.Error()))
 
-			return ctrlResult, err
+			return tlsEndptCfgMap, ctrlResult, err
 		} else if (ctrlResult != ctrl.Result{}) {
 			instance.Status.Conditions.Set(condition.FalseCondition(
 				condition.ExposeServiceReadyCondition,
 				condition.RequestedReason,
 				condition.SeverityInfo,
 				condition.ExposeServiceReadyRunningMessage))
-			return ctrlResult, nil
+			return tlsEndptCfgMap, ctrlResult, nil
 		}
 		// create service - end
 
-		// TODO: TLS, pass in https as protocol, create TLS cert
+		// create TLS certificates if enabled
+		if endpointTLSCfg, ok := instance.Spec.TLS.API.Endpoint[endpointType]; ok && instance.Spec.TLS.API.Enabled() {
+			// generate certificate
+			if endpointTLSCfg.SecretName == nil && endpointTLSCfg.IssuerName != nil {
+				// request certificate
+				certRequest := certmanager.CertificateRequest{
+					IssuerName:  *endpointTLSCfg.IssuerName,
+					CertName:    fmt.Sprintf("%s-svc", endpointName),
+					Duration:    nil,
+					Hostnames:   []string{svc.GetServiceHostname()},
+					Ips:         nil,
+					Annotations: map[string]string{},
+					Labels:      exportLabels,
+					Usages:      nil,
+				}
+				certSecret, ctrlResult, err := certmanager.EnsureCert(
+					ctx,
+					helper,
+					certRequest)
+				if err != nil {
+					return tlsEndptCfgMap, ctrlResult, err
+				} else if (ctrlResult != ctrl.Result{}) {
+					return tlsEndptCfgMap, ctrlResult, nil
+				}
+
+				endpointTLSCfg.SecretName = ptr.To(certSecret.Name)
+			}
+
+			// convert to tls.Service. Here we could also set different
+			// mount points for the certificates if required
+			tlsService, err := endpointTLSCfg.ToService()
+			if err != nil {
+				return tlsEndptCfgMap, ctrlResult, err
+			}
+
+			tlsEndptCfgMap[endpointType] = *tlsService
+
+			// set endpoint protocol to https
+			data.Protocol = ptr.To(service.ProtocolHTTPS)
+		}
+
 		apiEndpointsV3[string(endpointType)], err = svc.GetAPIEndpoint(
 			svcOverride.EndpointURL, data.Protocol, data.Path)
 		if err != nil {
-			return ctrl.Result{}, err
+			return tlsEndptCfgMap, ctrl.Result{}, err
 		}
 	}
 	instance.Status.Conditions.MarkTrue(condition.ExposeServiceReadyCondition, condition.ExposeServiceReadyMessage)
@@ -459,7 +508,7 @@ func (r *CinderAPIReconciler) reconcileInit(
 		ksSvcObj := keystonev1.NewKeystoneService(ksSvcSpec, instance.Namespace, serviceLabels, time.Duration(10)*time.Second)
 		ctrlResult, err := ksSvcObj.CreateOrPatch(ctx, helper)
 		if err != nil {
-			return ctrlResult, err
+			return tlsEndptCfgMap, ctrlResult, err
 		}
 
 		// mirror the Status, Reason, Severity and Message of the latest keystoneservice condition
@@ -470,7 +519,7 @@ func (r *CinderAPIReconciler) reconcileInit(
 		}
 
 		if (ctrlResult != ctrl.Result{}) {
-			return ctrlResult, nil
+			return tlsEndptCfgMap, ctrlResult, nil
 		}
 
 		instance.Status.ServiceIDs[ksSvc["name"]] = ksSvcObj.GetServiceID()
@@ -488,7 +537,7 @@ func (r *CinderAPIReconciler) reconcileInit(
 			time.Duration(10)*time.Second)
 		ctrlResult, err = ksEndptObj.CreateOrPatch(ctx, helper)
 		if err != nil {
-			return ctrlResult, err
+			return tlsEndptCfgMap, ctrlResult, err
 		}
 
 		// mirror the Status, Reason, Severity and Message of the latest keystoneendpoint condition
@@ -499,12 +548,12 @@ func (r *CinderAPIReconciler) reconcileInit(
 		}
 
 		if (ctrlResult != ctrl.Result{}) {
-			return ctrlResult, nil
+			return tlsEndptCfgMap, ctrlResult, nil
 		}
 	}
 
 	r.Log.Info(fmt.Sprintf("Reconciled Service '%s' init successfully", instance.Name))
-	return ctrl.Result{}, nil
+	return tlsEndptCfgMap, ctrl.Result{}, nil
 }
 
 func (r *CinderAPIReconciler) reconcileNormal(ctx context.Context, instance *cinderv1beta1.CinderAPI, helper *helper.Helper) (ctrl.Result, error) {
@@ -553,6 +602,33 @@ func (r *CinderAPIReconciler) reconcileNormal(ctx context.Context, instance *cin
 			return ctrlResult, err
 		}
 	}
+
+	//
+	// TLS input validation
+	//
+	if instance.Spec.TLS.API.Enabled() {
+		// Validate the CA cert secret if provided
+		if instance.Spec.TLS.CaBundleSecretName != "" {
+			hash, ctrlResult, err := tls.ValidateCACertSecret(
+				ctx,
+				helper.GetClient(),
+				types.NamespacedName{
+					Name:      instance.Spec.TLS.CaBundleSecretName,
+					Namespace: instance.Namespace,
+				},
+			)
+			if err != nil {
+				return ctrlResult, err
+			} else if (ctrlResult != ctrl.Result{}) {
+				return ctrlResult, nil
+			}
+
+			if hash != "" {
+				configVars[tls.CABundleKey] = env.SetValue(hash)
+			}
+		}
+	}
+
 	instance.Status.Conditions.MarkTrue(condition.InputReadyCondition, condition.InputReadyMessage)
 
 	//
@@ -577,24 +653,6 @@ func (r *CinderAPIReconciler) reconcileNormal(ctx context.Context, instance *cin
 		return ctrl.Result{}, err
 	}
 
-	//
-	// create hash over all the different input resources to identify if any those changed
-	// and a restart/recreate is required.
-	//
-	inputHash, hashChanged, err := r.createHashOfInputHashes(ctx, instance, configVars)
-	if err != nil {
-		instance.Status.Conditions.Set(condition.FalseCondition(
-			condition.ServiceConfigReadyCondition,
-			condition.ErrorReason,
-			condition.SeverityWarning,
-			condition.ServiceConfigReadyErrorMessage,
-			err.Error()))
-		return ctrl.Result{}, err
-	} else if hashChanged {
-		// Hash changed and instance status should be updated (which will be done by main defer func),
-		// so we need to return and reconcile again
-		return ctrl.Result{}, nil
-	}
 	instance.Status.Conditions.MarkTrue(condition.ServiceConfigReadyCondition, condition.ServiceConfigReadyMessage)
 
 	//
@@ -631,11 +689,25 @@ func (r *CinderAPIReconciler) reconcileNormal(ctx context.Context, instance *cin
 	}
 
 	// Handle service init
-	ctrlResult, err = r.reconcileInit(ctx, instance, helper, serviceLabels)
+	tlsEndpointConfig, ctrlResult, err := r.reconcileInit(ctx, instance, helper, serviceLabels)
 	if err != nil {
 		return ctrlResult, err
 	} else if (ctrlResult != ctrl.Result{}) {
 		return ctrlResult, nil
+	}
+
+	if len(tlsEndpointConfig) > 0 {
+		certsHash, ctrlResult, err := tls.ValidateEndpointCerts(
+			ctx,
+			helper,
+			instance.Namespace,
+			tlsEndpointConfig)
+		if err != nil {
+			return ctrlResult, err
+		} else if (ctrlResult != ctrl.Result{}) {
+			return ctrlResult, nil
+		}
+		configVars[tls.TLSHashName] = env.SetValue(certsHash)
 	}
 
 	// Handle service update
@@ -658,8 +730,27 @@ func (r *CinderAPIReconciler) reconcileNormal(ctx context.Context, instance *cin
 	// normal reconcile tasks
 	//
 
+	//
+	// create hash over all the different input resources to identify if any those changed
+	// and a restart/recreate is required.
+	//
+	inputHash, hashChanged, err := r.createHashOfInputHashes(ctx, instance, configVars)
+	if err != nil {
+		instance.Status.Conditions.Set(condition.FalseCondition(
+			condition.ServiceConfigReadyCondition,
+			condition.ErrorReason,
+			condition.SeverityWarning,
+			condition.ServiceConfigReadyErrorMessage,
+			err.Error()))
+		return ctrl.Result{}, err
+	} else if hashChanged {
+		// Hash changed and instance status should be updated (which will be done by main defer func),
+		// so we need to return and reconcile again
+		return ctrl.Result{}, nil
+	}
+
 	// Define a new Deployment object
-	deplDef := cinderapi.Deployment(instance, inputHash, serviceLabels, serviceAnnotations)
+	deplDef := cinderapi.Deployment(instance, inputHash, serviceLabels, serviceAnnotations, tlsEndpointConfig)
 	depl := deployment.NewDeployment(
 		deplDef,
 		time.Duration(5)*time.Second,

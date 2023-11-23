@@ -45,6 +45,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 
+	certmgrv1 "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
 	memcachedv1 "github.com/openstack-k8s-operators/infra-operator/apis/memcached/v1beta1"
 	rabbitmqv1 "github.com/openstack-k8s-operators/infra-operator/apis/rabbitmq/v1beta1"
 	infra_test "github.com/openstack-k8s-operators/infra-operator/apis/test/helpers"
@@ -109,6 +110,8 @@ var _ = BeforeSuite(func() {
 	rabbitmqCRDs, err := test.GetCRDDirFromModule(
 		"github.com/openstack-k8s-operators/infra-operator/apis", "../../go.mod", "bases")
 	Expect(err).ShouldNot(HaveOccurred())
+	certmgrv1CRDs, err := test.GetOpenShiftCRDDir("cert-manager/v1", "../../go.mod")
+	Expect(err).ShouldNot(HaveOccurred())
 
 	By("bootstrapping test environment")
 	testEnv = &envtest.Environment{
@@ -117,6 +120,7 @@ var _ = BeforeSuite(func() {
 			keystoneCRDs,
 			mariaDBCRDs,
 			rabbitmqCRDs,
+			certmgrv1CRDs,
 		},
 		CRDInstallOptions: envtest.CRDInstallOptions{
 			Paths: []string{
@@ -152,6 +156,8 @@ var _ = BeforeSuite(func() {
 	err = networkv1.AddToScheme(scheme.Scheme)
 	Expect(err).NotTo(HaveOccurred())
 	err = admissionv1beta1.AddToScheme(scheme.Scheme)
+	Expect(err).NotTo(HaveOccurred())
+	err = certmgrv1.AddToScheme(scheme.Scheme)
 	Expect(err).NotTo(HaveOccurred())
 
 	logger = ctrl.Log.WithName("---Test---")

@@ -21,6 +21,8 @@ import (
 	common "github.com/openstack-k8s-operators/lib-common/modules/common"
 	"github.com/openstack-k8s-operators/lib-common/modules/common/affinity"
 	"github.com/openstack-k8s-operators/lib-common/modules/common/env"
+	"github.com/openstack-k8s-operators/lib-common/modules/common/service"
+	"github.com/openstack-k8s-operators/lib-common/modules/common/tls"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -39,6 +41,7 @@ func Deployment(
 	configHash string,
 	labels map[string]string,
 	annotations map[string]string,
+	tlsEndptCfgMap map[service.Endpoint]tls.Service,
 ) *appsv1.Deployment {
 	runAsUser := int64(0)
 
@@ -74,6 +77,31 @@ func Deployment(
 			Port: intstr.IntOrString{Type: intstr.Int, IntVal: int32(cinder.CinderPublicPort)},
 		}
 		readinessProbe.HTTPGet = livenessProbe.HTTPGet
+
+		if instance.Spec.TLS.API.Enabled() {
+			livenessProbe.HTTPGet.Scheme = corev1.URISchemeHTTPS
+			readinessProbe.HTTPGet.Scheme = corev1.URISchemeHTTPS
+		}
+	}
+
+	// create Volume and VolumeMounts
+	volumes := GetVolumes(
+		cinder.GetOwningCinderName(instance),
+		instance.Name,
+		instance.Spec.ExtraMounts)
+	volumeMounts := GetVolumeMounts(instance.Spec.ExtraMounts)
+
+	// add TLS certificates if enabled
+	if instance.Spec.TLS.API.Enabled() {
+		// Validate endpoint cert secrets
+		volumes = append(volumes, instance.Spec.TLS.CreateVolume())
+		volumeMounts = append(volumeMounts, instance.Spec.TLS.CreateVolumeMounts(nil)...)
+
+		// add service cert Volumes and VolumeMounts
+		for endpt, tlsEndptCfg := range tlsEndptCfgMap {
+			volumes = append(volumes, tlsEndptCfg.CreateVolume(endpt.String()))
+			volumeMounts = append(volumeMounts, tlsEndptCfg.CreateVolumeMounts(endpt.String())...)
+		}
 	}
 
 	envVars := map[string]env.Setter{}
@@ -126,21 +154,18 @@ func Deployment(
 								RunAsUser: &runAsUser,
 							},
 							Env:            env.MergeEnvs([]corev1.EnvVar{}, envVars),
-							VolumeMounts:   GetVolumeMounts(instance.Spec.ExtraMounts),
+							VolumeMounts:   volumeMounts,
 							Resources:      instance.Spec.Resources,
 							ReadinessProbe: readinessProbe,
 							LivenessProbe:  livenessProbe,
 						},
 					},
 					NodeSelector: instance.Spec.NodeSelector,
+					Volumes:      volumes,
 				},
 			},
 		},
 	}
-	deployment.Spec.Template.Spec.Volumes = GetVolumes(
-		cinder.GetOwningCinderName(instance),
-		instance.Name,
-		instance.Spec.ExtraMounts)
 
 	// If possible two pods of the same service should not
 	// run on the same worker node. If this is not possible

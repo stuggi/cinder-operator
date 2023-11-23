@@ -103,7 +103,19 @@ func StatefulSet(
 	envVars["MALLOC_MMAP_THRESHOLD_"] = env.SetValue("131072")
 	envVars["MALLOC_TRIM_THRESHOLD_"] = env.SetValue("262144")
 
+	volumes := GetVolumes(
+		cinder.GetOwningCinderName(instance),
+		instance.Name,
+		instance.Spec.ExtraMounts)
 	volumeMounts := GetVolumeMounts(instance.Spec.ExtraMounts)
+
+	// add TLS certificates if enabled
+	if instance.Spec.TLS.CaBundleSecretName != "" {
+		// Add the CA bundle to the apiVolumes and httpdVolumeMount to have it
+		// available everywhere
+		volumes = append(volumes, instance.Spec.TLS.CreateVolume())
+		volumeMounts = append(volumeMounts, instance.Spec.TLS.CreateVolumeMounts(nil)...)
+	}
 
 	statefulset := &appsv1.StatefulSet{
 		ObjectMeta: metav1.ObjectMeta{
@@ -157,14 +169,11 @@ func StatefulSet(
 						},
 					},
 					NodeSelector: instance.Spec.NodeSelector,
+					Volumes:      volumes,
 				},
 			},
 		},
 	}
-	statefulset.Spec.Template.Spec.Volumes = GetVolumes(
-		cinder.GetOwningCinderName(instance),
-		instance.Name,
-		instance.Spec.ExtraMounts)
 
 	// If possible two pods of the same service should not
 	// run on the same worker node. If this is not possible
