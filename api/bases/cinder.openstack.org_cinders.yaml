@@ -151,8 +151,6 @@ spec:
                     properties:
                       api:
                         properties:
-                          disabled:
-                            type: boolean
                           internal:
                             properties:
                               secretName:
