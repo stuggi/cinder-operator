@@ -329,7 +329,7 @@ func (r *CinderAPIReconciler) findObjectsForSrc(src client.Object) []reconcile.R
 
 	l := log.FromContext(context.Background()).WithName("Controllers").WithName("CinderAPI")
 
-	for _, field := range apinWatchFields {
+	for _, field := range cinderAPIWatchFields {
 		crList := &cinderv1beta1.CinderAPIList{}
 		listOps := &client.ListOptions{
 			FieldSelector: fields.OneTermEqualSelector(field, src.GetName()),

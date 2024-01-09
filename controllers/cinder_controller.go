@@ -230,7 +230,7 @@ var (
 		passwordSecretField,
 		caBundleSecretNameField,
 	}
-	apinWatchFields = []string{
+	cinderAPIWatchFields = []string{
 		passwordSecretField,
 		caBundleSecretNameField,
 		tlsAPIInternalField,
