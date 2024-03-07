@@ -94,3 +94,5 @@ replace github.com/openshift/api => github.com/openshift/api v0.0.0-202304141430
 // needed to to cert-manager v1.11.4 see https://github.com/cert-manager/cert-manager/blob/v1.11.4/go.mod#L263C1-L264C104
 // remove this once we bump to cert-manager v1.12.x
 replace github.com/Venafi/vcert/v4 => github.com/jetstack/vcert/v4 v4.9.6-0.20230519122548-219f317ae107 //allow-merging
+
+replace github.com/openstack-k8s-operators/infra-operator/apis => github.com/stuggi/infra-operator/apis v0.0.0-20240307080001-2c64377dc93a
