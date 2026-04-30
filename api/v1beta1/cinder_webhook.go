@@ -35,7 +35,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
@@ -70,9 +69,8 @@ func SetupDefaults() {
 	cinderlog.Info("Cinder defaults initialized", "defaults", cinderDefaults)
 }
 
-var _ webhook.Defaulter = &Cinder{}
 
-// Default implements webhook.Defaulter so a webhook will be registered for the type
+// Default implements defaulting so a webhook will be registered for the type
 func (r *Cinder) Default() {
 	cinderlog.Info("default", "name", r.Name)
 
@@ -194,9 +192,8 @@ func (spec *CinderSpecBase) validateDeprecatedFieldsUpdate(old CinderSpecBase, b
 	return common_webhook.ValidateDeprecatedFieldsUpdate(deprecatedFields, basePath)
 }
 
-var _ webhook.Validator = &Cinder{}
 
-// ValidateCreate implements webhook.Validator so a webhook will be registered for the type
+// ValidateCreate implements validation so a webhook will be registered for the type
 func (r *Cinder) ValidateCreate() (admission.Warnings, error) {
 	cinderlog.Info("validate create", "name", r.Name)
 
@@ -295,7 +292,7 @@ func (spec *CinderSpecCore) ValidateCreate(
 	return allWarns, allErrs
 }
 
-// ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
+// ValidateUpdate implements validation so a webhook will be registered for the type
 func (r *Cinder) ValidateUpdate(old runtime.Object) (admission.Warnings, error) {
 	cinderlog.Info("validate update", "name", r.Name)
 
@@ -404,7 +401,7 @@ func (spec *CinderSpecCore) ValidateUpdate(
 	return allWarns, allErrs
 }
 
-// ValidateDelete implements webhook.Validator so a webhook will be registered for the type
+// ValidateDelete implements validation so a webhook will be registered for the type
 func (r *Cinder) ValidateDelete() (admission.Warnings, error) {
 	cinderlog.Info("validate delete", "name", r.Name)
 
