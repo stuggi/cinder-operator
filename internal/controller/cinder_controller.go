@@ -902,6 +902,8 @@ func (r *CinderReconciler) reconcileNormal(ctx context.Context, instance *cinder
 	// normal reconcile tasks
 	//
 
+	subCRsUpdated := false
+
 	// deploy cinder-api
 	cinderAPI, op, err := r.apiDeploymentCreateOrUpdate(ctx, instance, transportURL.Status.SecretName, notificationsURLSecretName)
 	if err != nil {
@@ -914,6 +916,7 @@ func (r *CinderReconciler) reconcileNormal(ctx context.Context, instance *cinder
 		return ctrl.Result{}, err
 	}
 	if op != controllerutil.OperationResultNone {
+		subCRsUpdated = true
 		Log.Info(fmt.Sprintf("API CR for %s successfully %s", instance.Name, string(op)))
 	}
 
@@ -943,6 +946,7 @@ func (r *CinderReconciler) reconcileNormal(ctx context.Context, instance *cinder
 		return ctrl.Result{}, err
 	}
 	if op != controllerutil.OperationResultNone {
+		subCRsUpdated = true
 		Log.Info(fmt.Sprintf("Scheduler CR for %s successfully %s", instance.Name, string(op)))
 	}
 
@@ -981,6 +985,7 @@ func (r *CinderReconciler) reconcileNormal(ctx context.Context, instance *cinder
 			return ctrl.Result{}, err
 		}
 		if op != controllerutil.OperationResultNone {
+			subCRsUpdated = true
 			Log.Info(fmt.Sprintf("Backup CR for %s successfully %s", instance.Name, string(op)))
 		}
 		// Mirror values when the data in the StatefulSet is for the current generation
@@ -1027,6 +1032,7 @@ func (r *CinderReconciler) reconcileNormal(ctx context.Context, instance *cinder
 					return ctrl.Result{}, err
 				}
 				if op != controllerutil.OperationResultNone {
+					subCRsUpdated = true
 					Log.Info(fmt.Sprintf("Backup CR for %s successfully %s", instance.Name, string(op)))
 				}
 				if cinderBackup.Generation != cinderBackup.Status.ObservedGeneration {
@@ -1081,6 +1087,7 @@ func (r *CinderReconciler) reconcileNormal(ctx context.Context, instance *cinder
 			return ctrl.Result{}, err
 		}
 		if op != controllerutil.OperationResultNone {
+			subCRsUpdated = true
 			Log.Info(fmt.Sprintf("Volume %s CR for %s successfully %s", name, instance.Name, string(op)))
 		}
 
@@ -1158,7 +1165,7 @@ func (r *CinderReconciler) reconcileNormal(ctx context.Context, instance *cinder
 		instance.Status.TransportURLSecret != transportURL.Status.SecretName
 
 	if isTransportRotation {
-		if instance.Status.Conditions.AllSubConditionIsTrue() {
+		if !subCRsUpdated && instance.Status.Conditions.AllSubConditionIsTrue() {
 			if err := rabbitmqv1.RemoveTransportSecretConsumerFinalizer(
 				ctx, helper, instance.Namespace,
 				instance.Status.TransportURLSecret,
@@ -1179,7 +1186,7 @@ func (r *CinderReconciler) reconcileNormal(ctx context.Context, instance *cinder
 			*instance.Status.NotificationsURLSecret != notificationBusInstanceURL.Status.SecretName
 
 		if isNotificationRotation {
-			if instance.Status.Conditions.AllSubConditionIsTrue() {
+			if !subCRsUpdated && instance.Status.Conditions.AllSubConditionIsTrue() {
 				if err := rabbitmqv1.RemoveTransportSecretConsumerFinalizer(
 					ctx, helper, instance.Namespace,
 					*instance.Status.NotificationsURLSecret,
@@ -1201,7 +1208,7 @@ func (r *CinderReconciler) reconcileNormal(ctx context.Context, instance *cinder
 	isRotation := instance.Status.ApplicationCredentialSecret != "" && instance.Status.ApplicationCredentialSecret != instance.Spec.Auth.ApplicationCredentialSecret
 
 	if isRotation {
-		allServicesReady := instance.Status.Conditions.AllSubConditionIsTrue()
+		allServicesReady := !subCRsUpdated && instance.Status.Conditions.AllSubConditionIsTrue()
 		if allServicesReady {
 			if err := keystonev1.RemoveACSecretConsumerFinalizer(ctx, helper, instance.Namespace,
 				instance.Status.ApplicationCredentialSecret, cinder.ACConsumerFinalizer); err != nil {
