@@ -631,10 +631,18 @@ func (r *CinderReconciler) reconcileNormal(ctx context.Context, instance *cinder
 	if err := rabbitmqv1.ManageTransportSecretFinalizer(
 		ctx, helper, instance.Namespace,
 		transportURL.Status.SecretName,
-		instance.Status.TransportURLSecret,
 		cinder.TransportConsumerFinalizer,
 	); err != nil {
 		return ctrl.Result{}, err
+	}
+	if instance.Status.TransportURLSecret == transportURL.Status.SecretName {
+		if err := rabbitmqv1.RemoveTransportSecretConsumerFinalizer(
+			ctx, helper, instance.Namespace,
+			transportURL.Status.PreviousSecretName,
+			cinder.TransportConsumerFinalizer,
+		); err != nil {
+			return ctrl.Result{}, err
+		}
 	}
 	instance.Status.TransportURLSecret = transportURL.Status.SecretName
 
@@ -682,17 +690,21 @@ func (r *CinderReconciler) reconcileNormal(ctx context.Context, instance *cinder
 			Log.Info(fmt.Sprintf("NotificationBusInstanceURL %s successfully reconciled - operation: %s", notificationBusInstanceURL.Name, string(op)))
 		}
 
-		oldNotifSecret := ""
-		if instance.Status.NotificationsURLSecret != nil {
-			oldNotifSecret = *instance.Status.NotificationsURLSecret
-		}
 		if err := rabbitmqv1.ManageTransportSecretFinalizer(
 			ctx, helper, instance.Namespace,
 			notificationBusInstanceURL.Status.SecretName,
-			oldNotifSecret,
 			cinder.TransportConsumerFinalizer,
 		); err != nil {
 			return ctrl.Result{}, err
+		}
+		if instance.Status.NotificationsURLSecret != nil && *instance.Status.NotificationsURLSecret == notificationBusInstanceURL.Status.SecretName {
+			if err := rabbitmqv1.RemoveTransportSecretConsumerFinalizer(
+				ctx, helper, instance.Namespace,
+				notificationBusInstanceURL.Status.PreviousSecretName,
+				cinder.TransportConsumerFinalizer,
+			); err != nil {
+				return ctrl.Result{}, err
+			}
 		}
 		*instance.Status.NotificationsURLSecret = notificationBusInstanceURL.Status.SecretName
 
