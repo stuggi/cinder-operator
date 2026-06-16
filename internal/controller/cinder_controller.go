@@ -454,6 +454,23 @@ func (r *CinderReconciler) reconcileDelete(ctx context.Context, instance *cinder
 		}
 	}
 
+	if err := rabbitmqv1.RemoveTransportSecretConsumerFinalizer(
+		ctx, helper, instance.Namespace,
+		instance.Status.TransportURLSecret,
+		cinder.TransportConsumerFinalizer,
+	); err != nil {
+		return ctrl.Result{}, err
+	}
+	if instance.Status.NotificationsURLSecret != nil {
+		if err := rabbitmqv1.RemoveTransportSecretConsumerFinalizer(
+			ctx, helper, instance.Namespace,
+			*instance.Status.NotificationsURLSecret,
+			cinder.TransportConsumerFinalizer,
+		); err != nil {
+			return ctrl.Result{}, err
+		}
+	}
+
 	// Service is deleted so remove the finalizer.
 	controllerutil.RemoveFinalizer(instance, helper.GetFinalizer())
 	Log.Info(fmt.Sprintf("Reconciled Service '%s' delete successfully", instance.Name))
@@ -611,6 +628,14 @@ func (r *CinderReconciler) reconcileNormal(ctx context.Context, instance *cinder
 		Log.Info(fmt.Sprintf("TransportURL %s successfully reconciled - operation: %s", transportURL.Name, string(op)))
 	}
 
+	if err := rabbitmqv1.ManageTransportSecretFinalizer(
+		ctx, helper, instance.Namespace,
+		transportURL.Status.SecretName,
+		instance.Status.TransportURLSecret,
+		cinder.TransportConsumerFinalizer,
+	); err != nil {
+		return ctrl.Result{}, err
+	}
 	instance.Status.TransportURLSecret = transportURL.Status.SecretName
 
 	if instance.Status.TransportURLSecret == "" {
@@ -657,6 +682,18 @@ func (r *CinderReconciler) reconcileNormal(ctx context.Context, instance *cinder
 			Log.Info(fmt.Sprintf("NotificationBusInstanceURL %s successfully reconciled - operation: %s", notificationBusInstanceURL.Name, string(op)))
 		}
 
+		oldNotifSecret := ""
+		if instance.Status.NotificationsURLSecret != nil {
+			oldNotifSecret = *instance.Status.NotificationsURLSecret
+		}
+		if err := rabbitmqv1.ManageTransportSecretFinalizer(
+			ctx, helper, instance.Namespace,
+			notificationBusInstanceURL.Status.SecretName,
+			oldNotifSecret,
+			cinder.TransportConsumerFinalizer,
+		); err != nil {
+			return ctrl.Result{}, err
+		}
 		*instance.Status.NotificationsURLSecret = notificationBusInstanceURL.Status.SecretName
 
 		if instance.Status.NotificationsURLSecret == nil {

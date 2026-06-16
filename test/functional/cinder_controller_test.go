@@ -2430,6 +2430,78 @@ var _ = Describe("Cinder Webhook", func() {
 			}, timeout, interval).Should(Succeed())
 		})
 	})
+
+	When("TransportURL consumer finalizer is managed", func() {
+		BeforeEach(func() {
+			DeferCleanup(k8sClient.Delete, ctx,
+				CreateCinderMessageBusSecret(
+					cinderTest.Instance.Namespace,
+					cinderTest.RabbitmqSecretName,
+				),
+			)
+			DeferCleanup(th.DeleteInstance, CreateCinder(cinderTest.Instance, GetDefaultCinderSpec()))
+			DeferCleanup(
+				mariadb.DeleteDBService,
+				mariadb.CreateDBService(
+					cinderTest.Instance.Namespace,
+					GetCinder(cinderTest.Instance).Spec.DatabaseInstance,
+					corev1.ServiceSpec{
+						Ports: []corev1.ServicePort{{Port: 3306}}}))
+
+			acc, accSecret := mariadb.CreateMariaDBAccountAndSecret(cinderTest.Database, mariadbv1.MariaDBAccountSpec{})
+			DeferCleanup(k8sClient.Delete, ctx, acc)
+			DeferCleanup(k8sClient.Delete, ctx, accSecret)
+			mariadb.CreateMariaDBDatabase(cinderTest.Database.Namespace, cinderTest.Database.Name, mariadbv1.MariaDBDatabaseSpec{})
+			DeferCleanup(k8sClient.Delete, ctx, mariadb.GetMariaDBDatabase(cinderTest.Database))
+
+			DeferCleanup(keystone.DeleteKeystoneAPI,
+				keystone.CreateKeystoneAPI(cinderTest.Instance.Namespace))
+
+			DeferCleanup(infra.DeleteMemcached, infra.CreateMemcached(cinderTest.Instance.Namespace, MemcachedInstance, memcachedv1.MemcachedSpec{}))
+			infra.SimulateMemcachedReady(cinderTest.CinderMemcached)
+
+			infra.SimulateTransportURLReady(cinderTest.CinderTransportURL)
+			mariadb.SimulateMariaDBAccountCompleted(cinderTest.Database)
+			mariadb.SimulateMariaDBDatabaseCompleted(cinderTest.Database)
+			th.SimulateJobSuccess(cinderTest.CinderDBSync)
+			th.SimulateJobSuccess(cinderTest.CinderOnlineDataMigration)
+			keystone.SimulateKeystoneServiceReady(cinderTest.CinderKeystoneService)
+			keystone.SimulateKeystoneEndpointReady(cinderTest.CinderKeystoneEndpoint)
+		})
+
+		It("should add the consumer finalizer to the transport secret", func() {
+			Eventually(func(g Gomega) {
+				secret := th.GetSecret(types.NamespacedName{
+					Namespace: cinderTest.Instance.Namespace,
+					Name:      cinderTest.RabbitmqSecretName,
+				})
+				g.Expect(secret.Finalizers).To(
+					ContainElement(cinder.TransportConsumerFinalizer))
+			}, timeout, interval).Should(Succeed())
+		})
+
+		It("should remove the consumer finalizer from transport secret on CR deletion", func() {
+			Eventually(func(g Gomega) {
+				secret := th.GetSecret(types.NamespacedName{
+					Namespace: cinderTest.Instance.Namespace,
+					Name:      cinderTest.RabbitmqSecretName,
+				})
+				g.Expect(secret.Finalizers).To(
+					ContainElement(cinder.TransportConsumerFinalizer))
+			}, timeout, interval).Should(Succeed())
+
+			th.DeleteInstance(GetCinder(cinderTest.Instance))
+
+			Eventually(func(g Gomega) {
+				secret := th.GetSecret(types.NamespacedName{
+					Namespace: cinderTest.Instance.Namespace,
+					Name:      cinderTest.RabbitmqSecretName,
+				})
+				g.Expect(secret.Finalizers).NotTo(
+					ContainElement(cinder.TransportConsumerFinalizer))
+			}, timeout, interval).Should(Succeed())
+		})
+	})
 })
 
 var _ = Describe("Cinder with RabbitMQ custom vhost and user", func() {
