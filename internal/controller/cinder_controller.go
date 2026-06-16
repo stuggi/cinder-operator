@@ -1150,26 +1150,27 @@ func (r *CinderReconciler) reconcileNormal(ctx context.Context, instance *cinder
 	Log.Info(fmt.Sprintf("Reconciled Service '%s' successfully", instance.Name))
 
 	// Manage the old transport secret's finalizer and status tracking.
-	// On rotation (status != current), update status but skip removal --
-	// the deployment was just patched and the informer cache may not yet
-	// reflect the rollout state. On subsequent cycles the config is unchanged
-	// so the deployment is not re-patched, the cache is accurate, and we can
-	// safely gate removal on AllSubConditionIsTrue.
+	// Follows the same pattern as AC rotation: only update the status field
+	// and remove the old finalizer when AllSubConditionIsTrue, so the guard
+	// (status != current) persists across rapid reconcile cycles until
+	// sub-services have genuinely deployed with the new credentials.
 	isTransportRotation := instance.Status.TransportURLSecret != "" &&
 		instance.Status.TransportURLSecret != transportURL.Status.SecretName
 
-	if !isTransportRotation &&
-		transportURL.Status.PreviousSecretName != "" &&
-		instance.Status.Conditions.AllSubConditionIsTrue() {
-		if err := rabbitmqv1.RemoveTransportSecretConsumerFinalizer(
-			ctx, helper, instance.Namespace,
-			transportURL.Status.PreviousSecretName,
-			cinder.TransportConsumerFinalizer,
-		); err != nil {
-			return ctrl.Result{}, err
+	if isTransportRotation {
+		if instance.Status.Conditions.AllSubConditionIsTrue() {
+			if err := rabbitmqv1.RemoveTransportSecretConsumerFinalizer(
+				ctx, helper, instance.Namespace,
+				instance.Status.TransportURLSecret,
+				cinder.TransportConsumerFinalizer,
+			); err != nil {
+				return ctrl.Result{}, err
+			}
+			instance.Status.TransportURLSecret = transportURL.Status.SecretName
 		}
+	} else {
+		instance.Status.TransportURLSecret = transportURL.Status.SecretName
 	}
-	instance.Status.TransportURLSecret = transportURL.Status.SecretName
 
 	// Same pattern for the notification transport secret.
 	if notificationBusInstanceURL != nil {
@@ -1177,18 +1178,20 @@ func (r *CinderReconciler) reconcileNormal(ctx context.Context, instance *cinder
 			*instance.Status.NotificationsURLSecret != "" &&
 			*instance.Status.NotificationsURLSecret != notificationBusInstanceURL.Status.SecretName
 
-		if !isNotificationRotation &&
-			notificationBusInstanceURL.Status.PreviousSecretName != "" &&
-			instance.Status.Conditions.AllSubConditionIsTrue() {
-			if err := rabbitmqv1.RemoveTransportSecretConsumerFinalizer(
-				ctx, helper, instance.Namespace,
-				notificationBusInstanceURL.Status.PreviousSecretName,
-				cinder.TransportConsumerFinalizer,
-			); err != nil {
-				return ctrl.Result{}, err
+		if isNotificationRotation {
+			if instance.Status.Conditions.AllSubConditionIsTrue() {
+				if err := rabbitmqv1.RemoveTransportSecretConsumerFinalizer(
+					ctx, helper, instance.Namespace,
+					*instance.Status.NotificationsURLSecret,
+					cinder.TransportConsumerFinalizer,
+				); err != nil {
+					return ctrl.Result{}, err
+				}
+				instance.Status.NotificationsURLSecret = ptr.To(notificationBusInstanceURL.Status.SecretName)
 			}
+		} else {
+			instance.Status.NotificationsURLSecret = ptr.To(notificationBusInstanceURL.Status.SecretName)
 		}
-		instance.Status.NotificationsURLSecret = ptr.To(notificationBusInstanceURL.Status.SecretName)
 	}
 
 	// Manage the old AC secret's finalizer and status tracking.
