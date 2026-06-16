@@ -916,8 +916,10 @@ func (r *CinderReconciler) reconcileNormal(ctx context.Context, instance *cinder
 		return ctrl.Result{}, err
 	}
 	if op != controllerutil.OperationResultNone {
-		subCRsUpdated = true
 		Log.Info(fmt.Sprintf("API CR for %s successfully %s", instance.Name, string(op)))
+	}
+	if cinderAPI.Generation != cinderAPI.Status.ObservedGeneration {
+		subCRsUpdated = true
 	}
 
 	// Mirror values when the data in the StatefulSet is for the current generation
@@ -946,8 +948,10 @@ func (r *CinderReconciler) reconcileNormal(ctx context.Context, instance *cinder
 		return ctrl.Result{}, err
 	}
 	if op != controllerutil.OperationResultNone {
-		subCRsUpdated = true
 		Log.Info(fmt.Sprintf("Scheduler CR for %s successfully %s", instance.Name, string(op)))
+	}
+	if cinderScheduler.Generation != cinderScheduler.Status.ObservedGeneration {
+		subCRsUpdated = true
 	}
 
 	// Mirror values when the data in the StatefulSet is for the current generation
@@ -985,8 +989,10 @@ func (r *CinderReconciler) reconcileNormal(ctx context.Context, instance *cinder
 			return ctrl.Result{}, err
 		}
 		if op != controllerutil.OperationResultNone {
-			subCRsUpdated = true
 			Log.Info(fmt.Sprintf("Backup CR for %s successfully %s", instance.Name, string(op)))
+		}
+		if cinderBackup.Generation != cinderBackup.Status.ObservedGeneration {
+			subCRsUpdated = true
 		}
 		// Mirror values when the data in the StatefulSet is for the current generation
 		if cinderBackup.Generation == cinderBackup.Status.ObservedGeneration {
@@ -1032,10 +1038,10 @@ func (r *CinderReconciler) reconcileNormal(ctx context.Context, instance *cinder
 					return ctrl.Result{}, err
 				}
 				if op != controllerutil.OperationResultNone {
-					subCRsUpdated = true
 					Log.Info(fmt.Sprintf("Backup CR for %s successfully %s", instance.Name, string(op)))
 				}
 				if cinderBackup.Generation != cinderBackup.Status.ObservedGeneration {
+					subCRsUpdated = true
 					waitingBkpGenerationMatch = true
 				} else {
 					// Mirror CinderBackup status' ReadyCount to this parent CR
@@ -1087,12 +1093,12 @@ func (r *CinderReconciler) reconcileNormal(ctx context.Context, instance *cinder
 			return ctrl.Result{}, err
 		}
 		if op != controllerutil.OperationResultNone {
-			subCRsUpdated = true
 			Log.Info(fmt.Sprintf("Volume %s CR for %s successfully %s", name, instance.Name, string(op)))
 		}
 
 		// Mirror values when the data in the StatefulSet is for the current generation
 		if cinderVolume.Generation != cinderVolume.Status.ObservedGeneration {
+			subCRsUpdated = true
 			waitingGenerationMatch = true
 		} else {
 			// Mirror CinderVolume status' ReadyCount to this parent CR
