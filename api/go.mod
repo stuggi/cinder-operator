@@ -4,7 +4,7 @@ go 1.24.4
 
 require (
 	github.com/openstack-k8s-operators/infra-operator/apis v0.6.1-0.20260610094512-d6e7a2257c1a
-	github.com/openstack-k8s-operators/lib-common/modules/common v0.6.1-0.20260610101308-d3778a549c89
+	github.com/openstack-k8s-operators/lib-common/modules/common v0.6.1-0.20260617073944-e6e62be1c4ec
 	github.com/openstack-k8s-operators/lib-common/modules/storage v0.6.1-0.20260610101308-d3778a549c89
 	golang.org/x/exp v0.0.0-20241217172543-b2144cdd0a67
 	k8s.io/api v0.31.14
