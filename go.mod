@@ -146,4 +146,4 @@ replace github.com/rabbitmq/cluster-operator/v2 => github.com/openstack-k8s-oper
 
 replace k8s.io/kube-openapi => k8s.io/kube-openapi v0.0.0-20250627150254-e9823e99808e //allow-merging
 
-replace github.com/openstack-k8s-operators/infra-operator/apis => github.com/lmiccini/infra-operator/apis v0.0.0-20260616155921-b2be0a5e2718
+replace github.com/openstack-k8s-operators/infra-operator/apis => github.com/lmiccini/infra-operator/apis v0.0.0-20260617055259-c9e555a422b1
