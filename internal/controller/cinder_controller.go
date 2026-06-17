@@ -902,9 +902,6 @@ func (r *CinderReconciler) reconcileNormal(ctx context.Context, instance *cinder
 	// normal reconcile tasks
 	//
 
-	subCRsUpdated := false
-	waitingSubCRGeneration := false
-
 	// deploy cinder-api
 	cinderAPI, op, err := r.apiDeploymentCreateOrUpdate(ctx, instance, transportURL.Status.SecretName, notificationsURLSecretName)
 	if err != nil {
@@ -918,7 +915,6 @@ func (r *CinderReconciler) reconcileNormal(ctx context.Context, instance *cinder
 	}
 	if op != controllerutil.OperationResultNone {
 		Log.Info(fmt.Sprintf("API CR for %s successfully %s", instance.Name, string(op)))
-		subCRsUpdated = true
 	}
 
 	// Mirror values when the data in the StatefulSet is for the current generation
@@ -934,7 +930,11 @@ func (r *CinderReconciler) reconcileNormal(ctx context.Context, instance *cinder
 			instance.Status.Conditions.Set(c)
 		}
 	} else {
-		waitingSubCRGeneration = true
+		instance.Status.Conditions.Set(condition.FalseCondition(
+			cinderv1beta1.CinderAPIReadyCondition,
+			condition.RequestedReason,
+			condition.SeverityInfo,
+			condition.DeploymentReadyRunningMessage))
 	}
 
 	// deploy cinder-scheduler
@@ -950,7 +950,6 @@ func (r *CinderReconciler) reconcileNormal(ctx context.Context, instance *cinder
 	}
 	if op != controllerutil.OperationResultNone {
 		Log.Info(fmt.Sprintf("Scheduler CR for %s successfully %s", instance.Name, string(op)))
-		subCRsUpdated = true
 	}
 
 	// Mirror values when the data in the StatefulSet is for the current generation
@@ -964,7 +963,11 @@ func (r *CinderReconciler) reconcileNormal(ctx context.Context, instance *cinder
 			instance.Status.Conditions.Set(c)
 		}
 	} else {
-		waitingSubCRGeneration = true
+		instance.Status.Conditions.Set(condition.FalseCondition(
+			cinderv1beta1.CinderSchedulerReadyCondition,
+			condition.RequestedReason,
+			condition.SeverityInfo,
+			condition.DeploymentReadyRunningMessage))
 	}
 
 	// DEPRECATED: A new interface has been implemented to deploy Cinder Backup, allowing
@@ -991,7 +994,6 @@ func (r *CinderReconciler) reconcileNormal(ctx context.Context, instance *cinder
 		}
 		if op != controllerutil.OperationResultNone {
 			Log.Info(fmt.Sprintf("Backup CR for %s successfully %s", instance.Name, string(op)))
-			subCRsUpdated = true
 		}
 		// Mirror values when the data in the StatefulSet is for the current generation
 		if cinderBackup.Generation == cinderBackup.Status.ObservedGeneration {
@@ -1002,7 +1004,11 @@ func (r *CinderReconciler) reconcileNormal(ctx context.Context, instance *cinder
 			backupCondition = cinderBackup.Status.Conditions.Mirror(cinderv1beta1.CinderBackupReadyCondition)
 			instance.Status.Conditions.Set(backupCondition)
 		} else {
-			waitingSubCRGeneration = true
+			instance.Status.Conditions.Set(condition.FalseCondition(
+				cinderv1beta1.CinderBackupReadyCondition,
+				condition.RequestedReason,
+				condition.SeverityInfo,
+				condition.DeploymentReadyRunningMessage))
 		}
 	} else {
 		// Clean up cinder-backup if there are no replicas
@@ -1040,7 +1046,6 @@ func (r *CinderReconciler) reconcileNormal(ctx context.Context, instance *cinder
 				}
 				if op != controllerutil.OperationResultNone {
 					Log.Info(fmt.Sprintf("Backup CR for %s successfully %s", instance.Name, string(op)))
-					subCRsUpdated = true
 				}
 				if cinderBackup.Generation != cinderBackup.Status.ObservedGeneration {
 					waitingBkpGenerationMatch = true
@@ -1067,6 +1072,12 @@ func (r *CinderReconciler) reconcileNormal(ctx context.Context, instance *cinder
 					// Using "condition.DeploymentReadyMessage" here because that is what gets mirrored
 					// as the message for the other Cinder children when they are successfully-deployed
 					instance.Status.Conditions.MarkTrue(cinderv1beta1.CinderBackupReadyCondition, condition.DeploymentReadyMessage)
+				} else {
+					instance.Status.Conditions.Set(condition.FalseCondition(
+						cinderv1beta1.CinderBackupReadyCondition,
+						condition.RequestedReason,
+						condition.SeverityInfo,
+						condition.DeploymentReadyRunningMessage))
 				}
 			} else {
 				err = r.backupCleanupDeployment(ctx, instance, crName)
@@ -1074,9 +1085,6 @@ func (r *CinderReconciler) reconcileNormal(ctx context.Context, instance *cinder
 					return ctrl.Result{}, err
 				}
 			}
-		}
-		if waitingBkpGenerationMatch {
-			waitingSubCRGeneration = true
 		}
 	}
 	// End list of cinder backup(s)
@@ -1098,7 +1106,6 @@ func (r *CinderReconciler) reconcileNormal(ctx context.Context, instance *cinder
 		}
 		if op != controllerutil.OperationResultNone {
 			Log.Info(fmt.Sprintf("Volume %s CR for %s successfully %s", name, instance.Name, string(op)))
-			subCRsUpdated = true
 		}
 
 		// Mirror values when the data in the StatefulSet is for the current generation
@@ -1123,9 +1130,6 @@ func (r *CinderReconciler) reconcileNormal(ctx context.Context, instance *cinder
 		}
 	}
 
-	if waitingGenerationMatch {
-		waitingSubCRGeneration = true
-	}
 	if volumeCondition != nil {
 		// If there was a Status=False condition, set that as the CinderVolumeReadyCondition
 		instance.Status.Conditions.Set(volumeCondition)
@@ -1134,6 +1138,12 @@ func (r *CinderReconciler) reconcileNormal(ctx context.Context, instance *cinder
 		// Using "condition.DeploymentReadyMessage" here because that is what gets mirrored
 		// as the message for the other Cinder children when they are successfully-deployed
 		instance.Status.Conditions.MarkTrue(cinderv1beta1.CinderVolumeReadyCondition, condition.DeploymentReadyMessage)
+	} else {
+		instance.Status.Conditions.Set(condition.FalseCondition(
+			cinderv1beta1.CinderVolumeReadyCondition,
+			condition.RequestedReason,
+			condition.SeverityInfo,
+			condition.DeploymentReadyRunningMessage))
 	}
 
 	err = r.volumeCleanupDeployments(ctx, instance)
@@ -1170,15 +1180,13 @@ func (r *CinderReconciler) reconcileNormal(ctx context.Context, instance *cinder
 	Log.Info(fmt.Sprintf("Reconciled Service '%s' successfully", instance.Name))
 
 	// Manage the old transport secret's finalizer and status tracking.
-	// Follows the same pattern as AC rotation: only update the status field
-	// and remove the old finalizer when AllSubConditionIsTrue, so the guard
-	// (status != current) persists across rapid reconcile cycles until
-	// sub-services have genuinely deployed with the new credentials.
+	// On rotation (old != new), only remove the old secret's finalizer after
+	// all sub-services are ready with the new credentials.
 	isTransportRotation := instance.Status.TransportURLSecret != "" &&
 		instance.Status.TransportURLSecret != transportURL.Status.SecretName
 
 	if isTransportRotation {
-		if !subCRsUpdated && !waitingSubCRGeneration && instance.Status.Conditions.AllSubConditionIsTrue() {
+		if instance.Status.Conditions.AllSubConditionIsTrue() {
 			if err := rabbitmqv1.RemoveTransportSecretConsumerFinalizer(
 				ctx, helper, instance.Namespace,
 				instance.Status.TransportURLSecret,
@@ -1199,7 +1207,7 @@ func (r *CinderReconciler) reconcileNormal(ctx context.Context, instance *cinder
 			*instance.Status.NotificationsURLSecret != notificationBusInstanceURL.Status.SecretName
 
 		if isNotificationRotation {
-			if !subCRsUpdated && !waitingSubCRGeneration && instance.Status.Conditions.AllSubConditionIsTrue() {
+			if instance.Status.Conditions.AllSubConditionIsTrue() {
 				if err := rabbitmqv1.RemoveTransportSecretConsumerFinalizer(
 					ctx, helper, instance.Namespace,
 					*instance.Status.NotificationsURLSecret,
@@ -1221,7 +1229,7 @@ func (r *CinderReconciler) reconcileNormal(ctx context.Context, instance *cinder
 	isRotation := instance.Status.ApplicationCredentialSecret != "" && instance.Status.ApplicationCredentialSecret != instance.Spec.Auth.ApplicationCredentialSecret
 
 	if isRotation {
-		allServicesReady := !subCRsUpdated && !waitingSubCRGeneration && instance.Status.Conditions.AllSubConditionIsTrue()
+		allServicesReady := instance.Status.Conditions.AllSubConditionIsTrue()
 		if allServicesReady {
 			if err := keystonev1.RemoveACSecretConsumerFinalizer(ctx, helper, instance.Namespace,
 				instance.Status.ApplicationCredentialSecret, cinder.ACConsumerFinalizer); err != nil {
