@@ -628,14 +628,6 @@ func (r *CinderReconciler) reconcileNormal(ctx context.Context, instance *cinder
 		Log.Info(fmt.Sprintf("TransportURL %s successfully reconciled - operation: %s", transportURL.Name, string(op)))
 	}
 
-	if err := rabbitmqv1.ManageTransportSecretFinalizer(
-		ctx, helper, instance.Namespace,
-		transportURL.Status.SecretName,
-		cinder.TransportConsumerFinalizer,
-	); err != nil {
-		return ctrl.Result{}, err
-	}
-
 	if transportURL.Status.SecretName == "" {
 		Log.Info(fmt.Sprintf("Waiting for TransportURL %s secret to be created", transportURL.Name))
 		instance.Status.Conditions.Set(condition.FalseCondition(
@@ -644,6 +636,14 @@ func (r *CinderReconciler) reconcileNormal(ctx context.Context, instance *cinder
 			condition.SeverityInfo,
 			condition.RabbitMqTransportURLReadyRunningMessage))
 		return cinder.ResultRequeue, nil
+	}
+
+	if err := rabbitmqv1.ManageTransportSecretFinalizer(
+		ctx, helper, instance.Namespace,
+		transportURL.Status.SecretName,
+		cinder.TransportConsumerFinalizer,
+	); err != nil {
+		return ctrl.Result{}, err
 	}
 
 	instance.Status.Conditions.MarkTrue(condition.RabbitMqTransportURLReadyCondition, condition.RabbitMqTransportURLReadyMessage)
@@ -682,14 +682,6 @@ func (r *CinderReconciler) reconcileNormal(ctx context.Context, instance *cinder
 			Log.Info(fmt.Sprintf("NotificationBusInstanceURL %s successfully reconciled - operation: %s", notificationBusInstanceURL.Name, string(op)))
 		}
 
-		if err := rabbitmqv1.ManageTransportSecretFinalizer(
-			ctx, helper, instance.Namespace,
-			notificationBusInstanceURL.Status.SecretName,
-			cinder.TransportConsumerFinalizer,
-		); err != nil {
-			return ctrl.Result{}, err
-		}
-
 		if notificationBusInstanceURL.Status.SecretName == "" {
 			Log.Info(fmt.Sprintf("Waiting for NotificationBusInstanceURL %s secret to be created", notificationBusInstanceURL.Name))
 			instance.Status.Conditions.Set(condition.FalseCondition(
@@ -698,6 +690,14 @@ func (r *CinderReconciler) reconcileNormal(ctx context.Context, instance *cinder
 				condition.SeverityInfo,
 				condition.NotificationBusInstanceReadyRunningMessage))
 			return cinder.ResultRequeue, nil
+		}
+
+		if err := rabbitmqv1.ManageTransportSecretFinalizer(
+			ctx, helper, instance.Namespace,
+			notificationBusInstanceURL.Status.SecretName,
+			cinder.TransportConsumerFinalizer,
+		); err != nil {
+			return ctrl.Result{}, err
 		}
 
 		instance.Status.Conditions.MarkTrue(condition.NotificationBusInstanceReadyCondition, condition.NotificationBusInstanceReadyMessage)
@@ -903,6 +903,7 @@ func (r *CinderReconciler) reconcileNormal(ctx context.Context, instance *cinder
 	//
 
 	subCRsUpdated := false
+	waitingSubCRGeneration := false
 
 	// deploy cinder-api
 	cinderAPI, op, err := r.apiDeploymentCreateOrUpdate(ctx, instance, transportURL.Status.SecretName, notificationsURLSecretName)
@@ -917,8 +918,6 @@ func (r *CinderReconciler) reconcileNormal(ctx context.Context, instance *cinder
 	}
 	if op != controllerutil.OperationResultNone {
 		Log.Info(fmt.Sprintf("API CR for %s successfully %s", instance.Name, string(op)))
-	}
-	if cinderAPI.Generation != cinderAPI.Status.ObservedGeneration {
 		subCRsUpdated = true
 	}
 
@@ -934,6 +933,8 @@ func (r *CinderReconciler) reconcileNormal(ctx context.Context, instance *cinder
 		if c != nil {
 			instance.Status.Conditions.Set(c)
 		}
+	} else {
+		waitingSubCRGeneration = true
 	}
 
 	// deploy cinder-scheduler
@@ -949,8 +950,6 @@ func (r *CinderReconciler) reconcileNormal(ctx context.Context, instance *cinder
 	}
 	if op != controllerutil.OperationResultNone {
 		Log.Info(fmt.Sprintf("Scheduler CR for %s successfully %s", instance.Name, string(op)))
-	}
-	if cinderScheduler.Generation != cinderScheduler.Status.ObservedGeneration {
 		subCRsUpdated = true
 	}
 
@@ -964,6 +963,8 @@ func (r *CinderReconciler) reconcileNormal(ctx context.Context, instance *cinder
 		if c != nil {
 			instance.Status.Conditions.Set(c)
 		}
+	} else {
+		waitingSubCRGeneration = true
 	}
 
 	// DEPRECATED: A new interface has been implemented to deploy Cinder Backup, allowing
@@ -990,8 +991,6 @@ func (r *CinderReconciler) reconcileNormal(ctx context.Context, instance *cinder
 		}
 		if op != controllerutil.OperationResultNone {
 			Log.Info(fmt.Sprintf("Backup CR for %s successfully %s", instance.Name, string(op)))
-		}
-		if cinderBackup.Generation != cinderBackup.Status.ObservedGeneration {
 			subCRsUpdated = true
 		}
 		// Mirror values when the data in the StatefulSet is for the current generation
@@ -1002,6 +1001,8 @@ func (r *CinderReconciler) reconcileNormal(ctx context.Context, instance *cinder
 			// Mirror CinderBackup's condition status
 			backupCondition = cinderBackup.Status.Conditions.Mirror(cinderv1beta1.CinderBackupReadyCondition)
 			instance.Status.Conditions.Set(backupCondition)
+		} else {
+			waitingSubCRGeneration = true
 		}
 	} else {
 		// Clean up cinder-backup if there are no replicas
@@ -1039,9 +1040,9 @@ func (r *CinderReconciler) reconcileNormal(ctx context.Context, instance *cinder
 				}
 				if op != controllerutil.OperationResultNone {
 					Log.Info(fmt.Sprintf("Backup CR for %s successfully %s", instance.Name, string(op)))
+					subCRsUpdated = true
 				}
 				if cinderBackup.Generation != cinderBackup.Status.ObservedGeneration {
-					subCRsUpdated = true
 					waitingBkpGenerationMatch = true
 				} else {
 					// Mirror CinderBackup status' ReadyCount to this parent CR
@@ -1074,6 +1075,9 @@ func (r *CinderReconciler) reconcileNormal(ctx context.Context, instance *cinder
 				}
 			}
 		}
+		if waitingBkpGenerationMatch {
+			waitingSubCRGeneration = true
+		}
 	}
 	// End list of cinder backup(s)
 
@@ -1094,11 +1098,11 @@ func (r *CinderReconciler) reconcileNormal(ctx context.Context, instance *cinder
 		}
 		if op != controllerutil.OperationResultNone {
 			Log.Info(fmt.Sprintf("Volume %s CR for %s successfully %s", name, instance.Name, string(op)))
+			subCRsUpdated = true
 		}
 
 		// Mirror values when the data in the StatefulSet is for the current generation
 		if cinderVolume.Generation != cinderVolume.Status.ObservedGeneration {
-			subCRsUpdated = true
 			waitingGenerationMatch = true
 		} else {
 			// Mirror CinderVolume status' ReadyCount to this parent CR
@@ -1119,6 +1123,9 @@ func (r *CinderReconciler) reconcileNormal(ctx context.Context, instance *cinder
 		}
 	}
 
+	if waitingGenerationMatch {
+		waitingSubCRGeneration = true
+	}
 	if volumeCondition != nil {
 		// If there was a Status=False condition, set that as the CinderVolumeReadyCondition
 		instance.Status.Conditions.Set(volumeCondition)
@@ -1171,7 +1178,7 @@ func (r *CinderReconciler) reconcileNormal(ctx context.Context, instance *cinder
 		instance.Status.TransportURLSecret != transportURL.Status.SecretName
 
 	if isTransportRotation {
-		if !subCRsUpdated && instance.Status.Conditions.AllSubConditionIsTrue() {
+		if !subCRsUpdated && !waitingSubCRGeneration && instance.Status.Conditions.AllSubConditionIsTrue() {
 			if err := rabbitmqv1.RemoveTransportSecretConsumerFinalizer(
 				ctx, helper, instance.Namespace,
 				instance.Status.TransportURLSecret,
@@ -1192,7 +1199,7 @@ func (r *CinderReconciler) reconcileNormal(ctx context.Context, instance *cinder
 			*instance.Status.NotificationsURLSecret != notificationBusInstanceURL.Status.SecretName
 
 		if isNotificationRotation {
-			if !subCRsUpdated && instance.Status.Conditions.AllSubConditionIsTrue() {
+			if !subCRsUpdated && !waitingSubCRGeneration && instance.Status.Conditions.AllSubConditionIsTrue() {
 				if err := rabbitmqv1.RemoveTransportSecretConsumerFinalizer(
 					ctx, helper, instance.Namespace,
 					*instance.Status.NotificationsURLSecret,
@@ -1214,7 +1221,7 @@ func (r *CinderReconciler) reconcileNormal(ctx context.Context, instance *cinder
 	isRotation := instance.Status.ApplicationCredentialSecret != "" && instance.Status.ApplicationCredentialSecret != instance.Spec.Auth.ApplicationCredentialSecret
 
 	if isRotation {
-		allServicesReady := !subCRsUpdated && instance.Status.Conditions.AllSubConditionIsTrue()
+		allServicesReady := !subCRsUpdated && !waitingSubCRGeneration && instance.Status.Conditions.AllSubConditionIsTrue()
 		if allServicesReady {
 			if err := keystonev1.RemoveACSecretConsumerFinalizer(ctx, helper, instance.Namespace,
 				instance.Status.ApplicationCredentialSecret, cinder.ACConsumerFinalizer); err != nil {
