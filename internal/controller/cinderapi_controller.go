@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"strings"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -511,7 +512,7 @@ func (r *CinderAPIReconciler) reconcileInit(
 				Labels:    exportLabels,
 				Selector:  serviceLabels,
 				Port: service.GenericServicePort{
-					Name:     endpointName,
+					Name:     endpointTypeStr,
 					Port:     data.Port,
 					Protocol: corev1.ProtocolTCP,
 				},
@@ -544,9 +545,19 @@ func (r *CinderAPIReconciler) reconcileInit(
 				service.AnnotationIngressCreateKey: "false",
 			})
 			if svc.GetServiceType() == corev1.ServiceTypeLoadBalancer {
-				svc.AddAnnotation(map[string]string{
-					service.AnnotationHostnameKey: svc.GetServiceHostname(), // add annotation to register service name in dnsmasq
-				})
+				serverName, serverAliases, err := service.GetVHostServerName(svcOverride, svc.GetServiceHostname())
+				if err != nil {
+					return ctrl.Result{}, err
+				}
+				annotations := map[string]string{
+					service.AnnotationHostnameKey: serverName,
+				}
+				if len(serverAliases) > 0 {
+					annotations[service.AnnotationCNAMEsKey] = strings.Join(serverAliases, ",")
+				} else {
+					svc.RemoveAnnotation(service.AnnotationCNAMEsKey)
+				}
+				svc.AddAnnotation(annotations)
 			}
 		}
 
