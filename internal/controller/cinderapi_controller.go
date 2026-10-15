@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"strings"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -511,7 +512,7 @@ func (r *CinderAPIReconciler) reconcileInit(
 				Labels:    exportLabels,
 				Selector:  serviceLabels,
 				Port: service.GenericServicePort{
-					Name:     endpointName,
+					Name:     endpointTypeStr,
 					Port:     data.Port,
 					Protocol: corev1.ProtocolTCP,
 				},
@@ -544,9 +545,25 @@ func (r *CinderAPIReconciler) reconcileInit(
 				service.AnnotationIngressCreateKey: "false",
 			})
 			if svc.GetServiceType() == corev1.ServiceTypeLoadBalancer {
-				svc.AddAnnotation(map[string]string{
-					service.AnnotationHostnameKey: svc.GetServiceHostname(), // add annotation to register service name in dnsmasq
-				})
+				serverName, serverAliases, err := service.GetVHostServerName(svcOverride, svc.GetServiceHostname())
+				if err != nil {
+					return ctrl.Result{}, err
+				}
+				// Clear override-provided DNS values before adding the endpoint's
+				// managed values: AddAnnotation merges via MergeStringMaps, which
+				// keeps any existing (user-supplied) value, so a stale hostname/cnames
+				// from the service override would otherwise win over the managed one.
+				svc.RemoveAnnotation(service.AnnotationHostnameKey)
+				svc.RemoveAnnotation(service.AnnotationCNAMEsKey)
+				annotations := map[string]string{
+					service.AnnotationHostnameKey: serverName,
+				}
+				if len(serverAliases) > 0 {
+					annotations[service.AnnotationCNAMEsKey] = strings.Join(serverAliases, ",")
+				} else {
+					svc.RemoveAnnotation(service.AnnotationCNAMEsKey)
+				}
+				svc.AddAnnotation(annotations)
 			}
 		}
 
